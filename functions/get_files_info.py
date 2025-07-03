@@ -4,9 +4,12 @@ import os
 """
 def get_files_info(working_directory, directory = None):
     full_path_working_directory = os.path.abspath(working_directory)
-    full_path_directory = os.path.abspath(directory)
+    if directory is None or directory == ".":
+        full_path_directory = full_path_working_directory
+    else:
+        full_path_directory = os.path.abspath(os.path.join(working_directory, directory))
 
-    if(os.path.isdir(directory) == False):
+    if not os.path.isdir(full_path_directory):
         return f'Error: "{directory}" is not a directory'
     
     if(full_path_directory.startswith(full_path_working_directory)):

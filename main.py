@@ -2,7 +2,7 @@ import os
 from google import genai
 from dotenv import load_dotenv
 import sys
-
+from functions.call_function import call_function
 
 system_prompt = """
 You are a helpful AI coding agent.
@@ -22,6 +22,8 @@ def main(prompt):
     if len(prompt) == 1:
         sys.exit(1)
     load_dotenv()
+    # user's initial message
+    messages = [genai.types.Content(role="user", parts = [{"text": prompt[1]}])]
     # this basically tells the llm how to use the functions
     schema_get_files_info = genai.types.FunctionDeclaration(
         name="get_files_info",
@@ -91,31 +93,30 @@ def main(prompt):
     # gemini api call
     api_key = os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-001",
-        contents=prompt[1],
-        # we pass our tools to the LLM here
-        config=genai.types.GenerateContentConfig(
-            tools=[available_functions], system_instruction=system_prompt
+    for _ in range(20):
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-001",
+            contents=messages,
+            # we pass our tools to the LLM here
+            config=genai.types.GenerateContentConfig(
+                tools=[available_functions], system_instruction=system_prompt
+            )
         )
-    )
-    if '-v' in sys.argv or '--verbose' in sys.argv:
-        print(f"User prompt: {prompt}")
-        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-    
-    
-    if response.function_calls:
-        function_list = response.function_calls
-        for function in function_list:
-            function_name = function.name
-            function_args = function.args
-            print(f"Calling function: {function_name}({function_args})")
-    else:
-        print(response.text)
-
-
-
+        # For every candidate in response, append the candidate.content to messages
+        for candidate in response.candidates:
+            messages.append(candidate.content)
+        # If function_calls present in response:
+        if response.function_calls:
+            for function in response.function_calls:
+                result = call_function(function, verbose=('-v' in sys.argv or '--verbose' in sys.argv))
+                # Append function call result (of type Content) to messages
+                messages.append(result)
+            # continue to the next loop iteration
+            continue
+        else:
+            # Print model's final response and break
+            print(response.text)
+            break
 if __name__ == "__main__":
     main(sys.argv)
 
